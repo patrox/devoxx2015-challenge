@@ -7,6 +7,9 @@ import pl.allegro.promo.devoxx2015.domain.OfferRepository;
 import pl.allegro.promo.devoxx2015.domain.PhotoScoreSource;
 
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
+import java.util.stream.Collectors;
 
 @Component
 public class OfferService {
@@ -21,10 +24,29 @@ public class OfferService {
     }
 
     public void processOffers(List<OfferPublishedEvent> events) {
-        // TODO save offers with pretty photos
+        events.stream()
+                .map(offerEvent -> {
+                            double photoScore = 0.7;
+                            try {
+                                        photoScore = CompletableFuture
+                                                .supplyAsync(() -> photoScoreSource.getScore(offerEvent.getPhotoUrl()))
+                                                .get();
+                            } catch (InterruptedException | ExecutionException e) {
+                                e.printStackTrace();
+                            }
+                            return new Offer(offerEvent.getId(), offerEvent.getTitle(), offerEvent.getPhotoUrl(), photoScore);
+
+                        }
+                )
+                .filter(Offer::hasPrettyPhoto)
+                .forEach(offerRepository::save);
+
     }
 
     public List<Offer> getOffers() {
-        return offerRepository.findAll(); // TODO some sorting?
+        return offerRepository.findAll()
+                .stream()
+                .sorted((o1, o2) -> -Double.compare(o1.getPhotoScore(), o2.getPhotoScore()))
+                .collect(Collectors.toList());
     }
 }
